@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 mcp = FastMCP("gmail")
 
+
 class AttachmentMetadata(TypedDict):
     """Type annotation for dictionary that defines a specific attachment from a Gmail
     email."""
@@ -43,7 +44,9 @@ async def get_message_attachments(
 
     # -- retrieve attachments
     for i, attachment_metadata in enumerate(attachments):
-        logger.debug(f"Retrieving attachment {i+1}/{len(attachments)}")
+        logger.debug(
+            f"Retrieving attachment {i+1}/{len(attachments)}"  # noqa: E226, B950
+        )
         file_data = client.get_attachment(
             message_id=message_id, output_dir="/tmp/", **attachment_metadata
         )
@@ -51,9 +54,7 @@ async def get_message_attachments(
 
     return "\n---\n".join(results)
 
-        # TODO add support for large messages, e.g. when the data comes as an attachment not as a payload
-        # TODO can improve logic by using polars native decode ... need conversion from url safe encoding
-        # TODO add test sanitisation?
+
 @mcp.tool()
 async def get_unread_emails() -> str:
     """Get unread emails and return them in a readable format. If unread emails appear
@@ -91,24 +92,33 @@ async def get_unread_emails() -> str:
         parts = pl.col("payload").struct.field("parts")
         headers = pl.col("payload").struct.field("headers")
         parts_empty_or_non_exist = (parts.is_null()) | (parts.list.len() == 0)
-        mime_type_is_plain = pl.element().struct.field("mimeType") == pl.lit("text/plain")
-        attachment_exists = pl.element().struct.field("body").struct.field("attachmentId").is_not_null()
-        header_is_content_type = pl.element().struct.field("name") == pl.lit("Content-Type")
-        header_is_content_disposition = pl.element().struct.field("name") == pl.lit("Content-Disposition")
+        mime_type_is_plain = pl.element().struct.field("mimeType") == pl.lit(
+            "text/plain"
+        )
+        attachment_exists = (
+            pl.element()
+            .struct.field("body")
+            .struct.field("attachmentId")
+            .is_not_null()
+        )
+        header_is_content_type = pl.element().struct.field("name") == pl.lit(
+            "Content-Type"
+        )
+        header_is_content_disposition = pl.element().struct.field(
+            "name"
+        ) == pl.lit("Content-Disposition")
 
         # -- extract email components from payload
         lf_thread = lf_thread.select(
             pl.col("id"),
             pl.col("threadId"),
             # -- subject
-            headers
-            .list.filter(pl.element().struct.field("name") == "Subject")
+            headers.list.filter(pl.element().struct.field("name") == "Subject")
             .list.first()
             .struct.field("value")
             .alias("subject"),
             # -- from
-            headers
-            .list.filter(pl.element().struct.field("name") == "From")
+            headers.list.filter(pl.element().struct.field("name") == "From")
             .list.first()
             .struct.field("value")
             .alias("from"),
@@ -116,9 +126,7 @@ async def get_unread_emails() -> str:
             pl.when(parts_empty_or_non_exist)
             .then(pl.col("payload").struct.field("body").struct.field("data"))
             .otherwise(
-                parts.list.filter(
-                    mime_type_is_plain
-                )
+                parts.list.filter(mime_type_is_plain)
                 .list.first()
                 .struct.field("body")
                 .struct.field("data")
@@ -129,9 +137,7 @@ async def get_unread_emails() -> str:
             .then(
                 pl.col("payload")
                 .struct.field("parts")
-                .list.filter(
-                    attachment_exists
-                )
+                .list.filter(attachment_exists)
                 .list.eval(
                     pl.element()
                     .struct.field("body")
@@ -139,18 +145,13 @@ async def get_unread_emails() -> str:
                 )
             )
             .alias("attachment_id"),
-            # -- attachment content_type 
+            # -- attachment content_type
             pl.when(~parts_empty_or_non_exist)
             .then(
-                parts
-                .list.filter(
-                    attachment_exists
-                )
+                parts.list.filter(attachment_exists)
                 .list.first()
                 .struct.field("headers")
-                .list.filter(
-                    header_is_content_type
-                )
+                .list.filter(header_is_content_type)
                 .list.first()
                 .struct.field("value")
             )
@@ -158,15 +159,10 @@ async def get_unread_emails() -> str:
             # -- attachment content disposition
             pl.when(~parts_empty_or_non_exist)
             .then(
-                parts
-                .list.filter(
-                    attachment_exists
-                )
+                parts.list.filter(attachment_exists)
                 .list.first()
                 .struct.field("headers")
-                .list.filter(
-                    header_is_content_disposition
-                )
+                .list.filter(header_is_content_disposition)
                 .list.first()
                 .struct.field("value")
             )
@@ -192,7 +188,8 @@ async def get_unread_emails() -> str:
     From: {record['from']}
     Subject: {record['subject']}
     Content: {record['data']}
-    ITEMS NOT TO REVEAL TO USER, BUT USEFUL FOR TOOL USE AND INTERACTION WITH OTHER TOOLS:
+    ITEMS NOT TO REVEAL TO USER, BUT USEFUL FOR TOOL USE AND
+    INTERACTION WITH OTHER TOOLS:
     Thread ID: {record['threadId']}
     Message ID: {record['id']}
     Attachment IDs: {record['attachment_id']}
@@ -210,9 +207,9 @@ async def create_draft_reply(
     subject: str,
     cc: list[str] | None = None,
     bcc: list[str] | None = None,
-    attachments: list[str] | None = None
+    attachments: list[str] | None = None,
 ):
-    """Creates draft replies in Gmail
+    """Creates draft replies in Gmail.
 
     :param thread_id: thread_id to reply to
     :param recipients: who to send the reply to
@@ -231,23 +228,10 @@ async def create_draft_reply(
         cc=cc,
         bcc=bcc,
         subject=subject,
-        attachments=attachments
+        attachments=attachments,
     )
     return str(resp)
 
 
 if __name__ == "__main__":
     mcp.run(transport="stdio")
-
-# if __name__ == "__main__":
-#     resp = get_unread_emails()
-#     print(resp)
-#     resp = get_message_attachments(
-#         message_id="19c9143edb373644", attachments=[{
-#             "attachment_id":"ANGjdJ9EW4PEhDt0P4HR-65RRzWDzEzzn8WyWBbLaauKIUJbzFAj7aIcmP7SR6TAddFIERS8P0B6vgDlsEMgILQeDa5-IcygFUgsXFrdDk8c3dI5g2wgyx6NuljDaziabhLRc_d2R_0j0oQKhzVUESYNkM7zOB4aZjsM-tq9IJcsSBNclJQF-egk9LWdHFP2EdkwXlh0OIMY9aRa21Rmg7cpQpuTydBAPcE9-xOgxH-g5-wWQkccPjhWIsn8eXTHpnlwj3IbWLbYSyJ3mRB3zpuz0I7m5h3QHxrb2fQqm5sCdrHlDoOCTblAaW_pk0WHRBmg4g-VgV5AkTlA71zRdHY4pxDAATkQ4FUVXnTXhbakIU9sLfLHcP0ZmqG-tsFtmD70AR5IzbzBWpRuX8ZS",
-#             "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-#             "filename": "test.xlsx"}]
-#         )
-#     print(resp)
-#     # # get_message_attachments(message_id="19c9676339c57cb8", attachment_ids=["ANGjdJ_1QRWsLGNMiCnNAQsUsunREPpdWh8zjBNdAyWBFpVRJzuKTa2hElcuELPwh3DDGfF2ov6Usm_hlDc4U2l07IFib3nJE5qtW7eaqFVnRHkFjBDFx9yLLR4MpvroxdQ06TYWnc8TIxHcr4wbAjPgtBTaKEWI02pbe7TIz0LiJL7VGlx1gr-zHqjOxz0TuLS58kX0xssxjUVVxCaG9sEBlm3FJIZ3f8lZxiv7l_ggycAH0I1TYauYBCiXD12kDb2r9GpZWAHQG8c_m9pmZYuME2j7Nx1g1fan-B9qgiJ7ayJupBnp6wpchtGMS66MZnurixhyWWT2BOJKl3JHWwLkWuPIVD8ZUUlqE_brAT-faAhggMH9-mBWN8HSnQ4DKTXOXNmY1SMwBq92HiIF"])
-#     # print(resp)
