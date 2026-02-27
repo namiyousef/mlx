@@ -104,3 +104,10 @@ However, because the MCP server runs locally on your machine, the file won't be 
 Here claude uses other tools at its disposal to interpret the results
 
 ## Draft an email
+![email](./images/email_prompt.png)
+
+![gmail_draft](./images/gmail_draft.png)
+![modified excel](./images/modified_excel.png)
+
+Claude uses tools from the `excel-mcp-server` to write data into excel files on your local machine. Then the `create_draft_reply` tool from the custom GMail MCP server is used to create the draft.
+
